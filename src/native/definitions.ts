@@ -86,6 +86,9 @@ export interface ShellItem extends Frame {
   fontSize: number;
   fontWeight: number;
   color: string;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
   badge?: ShellBadge;
   icon?: string;
   iconWidth?: number;
@@ -144,6 +147,8 @@ export interface ShellSnapshot {
   viewportWidth: number;
   /** Physical side the native rail is drawn on; the runtime resolves the logical edge through the document direction. */
   verticalBarEdge?: 'left' | 'right';
+  /** Visible foreground modal bounds; omitted for the full page. */
+  verticalBarFrame?: Frame;
   controls: ShellControl[];
 }
 
