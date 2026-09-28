@@ -293,6 +293,8 @@ export const createVerticalBarsWebProjection = (
   };
   const schedule = (): Promise<void> => {
     if (stopped) return Promise.resolve();
+    // Release Web ownership before the native runtime can acknowledge its next frame.
+    if (!enabled()) restore();
     const done = new Promise<void>((resolve) => waiters.push(resolve));
     if (!frame) frame = win.requestAnimationFrame(update);
     return done;

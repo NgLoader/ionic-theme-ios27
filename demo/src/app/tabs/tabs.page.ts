@@ -19,7 +19,7 @@ import { filter } from 'rxjs';
 
 // import { registerTabBarEffect } from '@rdlabo/ionic-theme-ios27';
 import { registeredEffect, registerTabBarEffect } from '../../../../src';
-import { HingeStatus, IonicNativeUIShell } from '@rdlabo/ionic-theme-ios27/vertical-bars';
+import { Foldable, type FoldState } from '@erkamyaman/capacitor-foldable';
 import { Capacitor } from '@capacitor/core';
 
 @Component({
@@ -46,7 +46,6 @@ export class TabsPage implements OnInit, AfterViewInit, OnDestroy, ViewDidEnter,
   readonly #el = inject(ElementRef);
   readonly splitPane = viewChild.required<IonSplitPane, ElementRef<HTMLIonSplitPaneElement>>('splitPane', { read: ElementRef });
   #hingeListener?: { remove(): Promise<void> };
-  #hingeMonitoring = false;
   #destroyed = false;
   readonly registeredGestures: registeredEffect[] = [];
   ngOnInit() {
@@ -64,36 +63,32 @@ export class TabsPage implements OnInit, AfterViewInit, OnDestroy, ViewDidEnter,
   }
 
   ngAfterViewInit() {
-    void this.observeHinge();
+    void this.observeHinge().catch((error) => console.error(error));
   }
 
-  setHingeStatus(status: HingeStatus | null) {
+  setFoldState(fold: FoldState) {
     const splitPane = this.splitPane().nativeElement;
     // The width rules key off the `when` attribute, so go through setAttribute.
-    splitPane.setAttribute('when', status === null ? '(min-width: 992px)' : '(min-width: 900px)');
-    splitPane.classList.toggle('ios-theme-split-pane-half-open', status === HingeStatus.PartiallyOpen);
+    const expanded = fold.state === 'half-opened' || (fold.state === 'flat' && !!fold.hingeBounds);
+    splitPane.setAttribute('when', expanded ? '(min-width: 900px)' : '(min-width: 992px)');
+    splitPane.classList.toggle('ios-theme-split-pane-half-open', fold.state === 'half-opened');
   }
 
   async observeHinge() {
     if (Capacitor.getPlatform() !== 'ios') return;
-    await IonicNativeUIShell.startDeviceLayoutMonitoring();
-    this.#hingeMonitoring = true;
-    if (this.#destroyed) return this.#releaseHinge();
-    this.#hingeListener = await IonicNativeUIShell.addListener('deviceLayoutChange', ({ hingeStatus }) => {
-      if (!this.#destroyed) this.setHingeStatus(hingeStatus);
+    let receivedEvent = false;
+    this.#hingeListener = await Foldable.addListener('foldStateChange', (fold) => {
+      receivedEvent = true;
+      if (!this.#destroyed) this.setFoldState(fold);
     });
-    const { hingeStatus } = await IonicNativeUIShell.getDeviceLayout();
     if (this.#destroyed) return this.#releaseHinge();
-    this.setHingeStatus(hingeStatus);
+    const fold = await Foldable.getFoldState();
+    if (!this.#destroyed && !receivedEvent) this.setFoldState(fold);
   }
 
   #releaseHinge() {
     void this.#hingeListener?.remove();
     this.#hingeListener = undefined;
-    if (this.#hingeMonitoring) {
-      this.#hingeMonitoring = false;
-      void IonicNativeUIShell.stopDeviceLayoutMonitoring();
-    }
   }
 
   ngOnDestroy() {

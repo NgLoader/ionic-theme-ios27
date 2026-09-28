@@ -419,13 +419,14 @@ export const createRuntime = async (
         verticalBarsMembers.add(element);
       }
       for (const element of accepted.flatMap(candidateSources)) {
+        const newlyProjected = !sources.has(element) || !element.hasAttribute(marker);
         if (!sources.has(element)) {
           sources.set(element, element.getAttribute('aria-hidden'));
           crossfade.play(element, true, handoffInstant || isVerticalBarsSource(element));
-          element.setAttribute(marker, '');
-          element.setAttribute('aria-hidden', 'true');
-          element.dispatchEvent(new CustomEvent('nativeUIShellChange'));
         }
+        element.setAttribute(marker, '');
+        element.setAttribute('aria-hidden', 'true');
+        if (newlyProjected) element.dispatchEvent(new CustomEvent('nativeUIShellChange'));
       }
       const received = pendingActivations;
       pendingActivations = [];

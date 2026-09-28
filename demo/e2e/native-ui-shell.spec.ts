@@ -20,8 +20,8 @@ interface ShellMock extends ShellMockCore {
   retirementDetails: { path: string; tabs: string }[];
 }
 
-const mockNative = async (page: Page, fail = false, nativeEdge: 'leading' | 'trailing' | null = 'trailing') => {
-  const script = ([fail, nativeEdge]: readonly [boolean, 'leading' | 'trailing' | null]) => {
+const mockNative = async (page: Page, fail = false, nativeEdge: 'leading' | 'trailing' | null | 'unreported' = 'trailing') => {
+  const script = ([fail, nativeEdge]: readonly [boolean, 'leading' | 'trailing' | null | 'unreported']) => {
     const mock = {
       updates: [] as ShellSnapshot[],
       sequence: 0,
@@ -53,15 +53,6 @@ const mockNative = async (page: Page, fail = false, nativeEdge: 'leading' | 'tra
       async getWebViewMetrics() {
         return { radius: 0 };
       },
-      async getDeviceLayout() {
-        return {
-          placement: { edge: nativeEdge, inset: nativeEdge ? 84 : 0 },
-          hingeStatus: null,
-          webViewMetrics: { radius: 0 },
-        };
-      },
-      async startDeviceLayoutMonitoring() {},
-      async stopDeviceLayoutMonitoring() {},
       async update(options: ShellSnapshot) {
         this.updates.push(options);
         if (this.hang) await new Promise(() => {});
@@ -91,6 +82,19 @@ const mockNative = async (page: Page, fail = false, nativeEdge: 'leading' | 'tra
       },
     };
 
+    const foldable = {
+      async getBarPlacement() {
+        if (nativeEdge === 'unreported') return new Promise(() => {});
+        return { verticalBarEdge: nativeEdge, inset: nativeEdge ? 84 : 0 };
+      },
+      async getFoldState() {
+        return { state: 'flat', isSeparating: false, posture: 'flat' };
+      },
+      listeners: {} as Record<string, ((event: never) => void)[]>,
+      addListener: mock.addListener,
+      notifyListeners: mock.notifyListeners,
+    };
+
     window.CapacitorCustomPlatform = { name: 'ios' };
     // Substitute the mock as the plugin implementation when @capacitor/core
     // initialises its global, before the app registers 'IonicNativeUIShell'.
@@ -101,7 +105,7 @@ const mockNative = async (page: Page, fail = false, nativeEdge: 'leading' | 'tra
       set: (instance) => {
         const registerPlugin = instance.registerPlugin;
         instance.registerPlugin = (name: string, implementations?: Record<string, unknown>) =>
-          name === 'IonicNativeUIShell' ? mock : registerPlugin(name, implementations);
+          name === 'IonicNativeUIShell' ? mock : name === 'Foldable' ? foldable : registerPlugin(name, implementations);
         capacitor = instance;
       },
     });
@@ -816,8 +820,7 @@ test('verticalBars rail remains native while its Ionic menu is open', async ({ p
   await expect(morphedCancel).toBeVisible();
 });
 
-// An OS-reported edge that disagrees with the DOM strip is the only supported
-// "native rail unavailable" state; the Web fallback then owns the rail.
+// A renderer that cannot honor the requested edge hands the rail back to the Web.
 test('verticalBars controls stay operable on Web when the reported rail edge differs', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockNative(page, false, 'leading');
@@ -848,9 +851,9 @@ test('verticalBars controls stay operable on Web when the reported rail edge dif
   await expect
     .poll(() =>
       page.evaluate(() =>
-        Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell').updates.every((snapshot: ShellSnapshot) =>
-          snapshot.controls.every((control: ShellControl) => control.placement !== 'vertical-bars'),
-        ),
+        Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell')
+          .updates.at(-1)
+          ?.controls.every((control: ShellControl) => control.placement !== 'vertical-bars'),
       ),
     )
     .toBe(true);
@@ -877,27 +880,101 @@ test('verticalBars controls stay operable on Web when the reported rail edge dif
   expect(await page.evaluate(() => (document.querySelector('ion-app') as TestAppElement).verticalBarsBackCloneMoved)).toBe(false);
 });
 
-// Apps linked against an SDK older than 27.1 never get a trait-reported edge;
-// the DOM strip still owns the layout, so the native rail follows it.
-test('verticalBars controls project natively when the OS reports no rail edge', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await mockNative(page, false, null);
-  await page.goto('/main/index/native-ui-shell');
-  await page.locator('app-native-ui-shell ion-menu-button').evaluate((element: HTMLIonMenuButtonElement) => (element.autoHide = false));
-  await page.locator('ion-app').evaluate((element) => element.classList.add('ios-theme-vertical-bars'));
+test('reported rail inset updates the layout without an edge change and clears when unavailable', async ({ page }) => {
+  await mockNative(page);
+  await page.goto('/main/index?verticalBarsOnly');
+  const app = page.locator('ion-app');
+  await page.getByText('iPhone Duo Mode', { exact: true }).click();
+  const width = () => app.evaluate((element) => element.style.getPropertyValue('--ios-theme-vertical-bars-native-inset'));
+  await expect.poll(width).toBe('84px');
+
+  const report = async (verticalBarEdge: 'leading' | 'trailing' | null, inset: number) => {
+    await page.evaluate(
+      ({ verticalBarEdge, inset }) => {
+        Capacitor.registerPlugin<ShellMock>('Foldable').notifyListeners('barPlacementChange', { verticalBarEdge, inset });
+      },
+      { verticalBarEdge, inset },
+    );
+  };
+  await report('trailing', 64);
+  await expect.poll(width).toBe('64px');
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell')
-          .updates.at(-1)
-          ?.controls.some((control: ShellControl) => control.placement === 'vertical-bars'),
-      ),
+      app.evaluate((element) => getComputedStyle(element).getPropertyValue('--ios-theme-vertical-bars-safe-area-right-resolved').trim()),
     )
-    .toBe(true);
-  await expect(page.locator('ion-app > ion-back-button.ios-theme-vertical-bars-back-button-projection')).toHaveCount(0);
-  await expect(page.locator('ion-app > ion-menu-button.ios-theme-vertical-bars-toolbar-projection')).toHaveCount(0);
-  await expect(page.locator('ion-app > ion-button.ios-theme-vertical-bars-toolbar-projection[aria-label=Save]')).toHaveCount(0);
+    .toBe('64px');
+  await report('leading', 96);
+  await expect(app).toHaveClass(/ios-theme-vertical-bars-left/);
+  await expect.poll(width).toBe('96px');
+  await report(null, 0);
+  await expect.poll(width).toBe('');
+  await expect(app).toHaveClass(/ios-theme-vertical-bars/);
+  await expect(page.locator('ion-tab-bar')).toBeVisible();
 });
+
+for (const initialEdge of [null, 'unreported'] as const) {
+  for (const verticalBarsOnly of [true, false]) {
+    test(`${initialEdge ?? 'null'} native edge restores ${verticalBarsOnly ? 'Web rail' : 'ordinary Native UI Shell'} and recovers`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 700, height: 900 });
+      await mockNative(page, false, initialEdge);
+      await page.goto(`/main/index/native-ui-shell${verticalBarsOnly ? '?verticalBarsOnly' : ''}`);
+      await page.locator('app-native-ui-shell ion-button[type=submit] ion-icon').evaluate((icon) => {
+        icon.setAttribute('slot', 'icon-only');
+        icon.parentElement!.querySelector('[data-label]')?.remove();
+      });
+      const app = page.locator('ion-app');
+      const tabs = page.locator('ion-tab-bar');
+      const save = page.locator('app-native-ui-shell ion-button[type=submit]');
+      const clone = page.locator('ion-app > ion-button.ios-theme-vertical-bars-toolbar-projection[aria-label=Save]');
+      const snapshot = () => page.evaluate(() => Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell').updates.at(-1));
+      const reportEdge = async (verticalBarEdge: 'leading' | 'trailing' | null) => {
+        await page.evaluate((edge) => {
+          Capacitor.registerPlugin<ShellMock>('Foldable').notifyListeners('barPlacementChange', { verticalBarEdge: edge });
+        }, verticalBarEdge);
+      };
+      await app.evaluate((element) => element.classList.add('ios-theme-vertical-bars'));
+      const expectFallback = async () => {
+        await expect.poll(async () => (await snapshot())?.controls.every((control) => control.placement !== 'vertical-bars')).toBe(true);
+        if (verticalBarsOnly) {
+          await expect(app).toHaveClass(/ios-theme-vertical-bars/);
+          await expect(clone).toBeVisible();
+          await expect(tabs).not.toHaveAttribute('data-native-ui-shell', '');
+          await expect(tabs).toBeVisible();
+        } else {
+          await expect(app).not.toHaveClass(/(?:^| )ios-theme-vertical-bars(?: |$)/);
+          await expect(app).toHaveAttribute('data-native-ui-shell-vertical-bars-suspended', '');
+          await expect(clone).toHaveCount(0);
+          await expect(tabs).toHaveAttribute('data-native-ui-shell', '');
+          await expect(save).toHaveAttribute('data-native-ui-shell', '');
+          await expect.poll(async () => (await snapshot())?.controls.some((control) => control.kind === 'ion-tab-bar')).toBe(true);
+        }
+      };
+      await expectFallback();
+      if (verticalBarsOnly) await clone.click();
+      else await activate(page, 'Save');
+      await expect(page.locator('[data-save-count]')).toHaveText('1');
+
+      await reportEdge('trailing');
+      await expect(app).toHaveClass(/ios-theme-vertical-bars/);
+      await expect(app).not.toHaveAttribute('data-native-ui-shell-vertical-bars-suspended', '');
+      await expect.poll(async () => (await snapshot())?.controls.some((control) => control.placement === 'vertical-bars')).toBe(true);
+      await expect(tabs).toHaveAttribute('data-native-ui-shell', '');
+      await expect(clone).toHaveCount(0);
+
+      await reportEdge(null);
+      await expectFallback();
+      if (verticalBarsOnly) await clone.click();
+      else await activate(page, 'Save');
+      await expect(page.locator('[data-save-count]')).toHaveText('2');
+
+      // The last explicit null survives updates and layout changes.
+      await page.setViewportSize({ width: 740, height: 900 });
+      await expectFallback();
+    });
+  }
+}
 
 test('native click preserves external form submit, disabled, and duplicate protection', async ({ page }) => {
   await mockNative(page);
@@ -2779,6 +2856,33 @@ test('rejected search retries when tab content changes without resizing', async 
     .evaluate((el) => (el.textContent = 'Index'));
   await expect(footer).toHaveAttribute('data-native-ui-shell', '');
   expect(await page.locator('ion-tab-bar').boundingBox()).toEqual(before);
+});
+
+test('verticalBars return to native projection when the requested edge matches after rotation', async ({ page }) => {
+  await mockNative(page, false, 'leading');
+  await page.goto('/main/index/native-ui-shell');
+  await page.locator('app-native-ui-shell ion-button[type=submit] ion-icon').evaluate((icon) => {
+    icon.setAttribute('slot', 'icon-only');
+    icon.parentElement!.querySelector('[data-label]')?.remove();
+  });
+  await page.locator('ion-app').evaluate((element) => element.classList.add('ios-theme-vertical-bars'));
+  const source = page.locator('app-native-ui-shell ion-button[type=submit]');
+  const clone = page.locator('ion-app > ion-button.ios-theme-vertical-bars-toolbar-projection[aria-label=Save]');
+  await expect(clone).toBeVisible();
+  const rotate = () =>
+    page.evaluate(() => {
+      Capacitor.registerPlugin<{ notifyListeners(name: string, value: unknown): void }>('Foldable').notifyListeners('barPlacementChange', {
+        verticalBarEdge: 'trailing',
+      });
+    });
+  await rotate();
+  await expect(clone).toHaveCount(0);
+  await expect(source).toHaveAttribute('data-native-ui-shell', '');
+  await page.locator('ion-app').evaluate((element) => element.setAttribute('dir', 'rtl'));
+  await expect(clone).toBeVisible();
+  await page.locator('ion-app').evaluate((element) => element.classList.add('ios-theme-vertical-bars-left'));
+  await expect(clone).toHaveCount(0);
+  await expect(source).toHaveAttribute('data-native-ui-shell', '');
 });
 
 for (const type of ['normal', 'card', 'sheet']) {

@@ -10,13 +10,12 @@ Adapt your Ionic app to iPhone Duo: place navigation and actions in its vertical
 
 Available in `1.2.0-0` as an **experimental** feature alongside [Native UI Shell](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/native-ui-shell). APIs and supported behavior may change. The real system rail and hinge reporting require iOS 27.1 or later and an app built with Xcode 27.1 or newer.
 
-This package provides three independent pieces for that hardware. Each works **without the iOS 27 theme stylesheets** and **without the full Native UI Shell**:
+This package provides two independent pieces for that hardware. Each works **without the iOS 27 theme stylesheets** and **without the full Native UI Shell**:
 
 - `dist/css/vertical-bars.css` — opt-in classes that reserve the rail's safe area, plus a registered custom property for a posture-driven split-pane width.
 - `enableVerticalControlArea()` — moves eligible tabs and toolbar controls into the reserved area. On Capacitor iOS they are rendered by a native SwiftUI `TabView` and toolbar; everywhere else the same controls appear as Web clones.
-- Device-layout reporting — the bundled Capacitor plugin reports rail placement, hinge status and the WebView corner radius through `getDeviceLayout()` and the `deviceLayoutChange` event.
 
-The pieces map to distinct responsibilities. The plugin reports **device facts** and never touches the DOM. The **application** decides what each value means for its layout. The **stylesheet and runtime** apply that decision — reserving space, projecting controls and adapting the split pane. Keeping these boundaries separate makes the native values easy to mock in tests and keeps the theme's own responsibility small.
+Device state belongs to [`@erkamyaman/capacitor-foldable`](https://github.com/erkamyaman/capacitor-foldable). The **application** subscribes to its events and chooses its layout. This package's **stylesheet and runtime** apply that decision by reserving space, projecting controls and adapting the split pane. The theme does not monitor hinge state or bar placement.
 
 ## Choose what to adopt
 
@@ -24,10 +23,10 @@ To keep your existing theme and add only the standalone support, follow [iPhone 
 
 | Goal                                             | Stylesheet          | Runtime                                                            |
 | ------------------------------------------------ | ------------------- | ------------------------------------------------------------------ |
-| Hinge posture only (layout switches) | none | none — subscribe to the plugin directly |
-| Posture-driven split-pane width | `vertical-bars.css` | none — subscribe to the plugin directly |
+| Hinge posture only (layout switches) | none | none — subscribe to `Foldable` directly |
+| Posture-driven split-pane width | `vertical-bars.css` | none — subscribe to `Foldable` directly |
 | Vertical rail for tabs and toolbar actions       | `vertical-bars.css` | `enableVerticalControlArea()`                                      |
-| Native shell plus the rail                       | `vertical-bars.css` | `enableNativeUIShell()` — already includes rail and posture support |
+| Native shell plus the rail                       | `vertical-bars.css` | `enableNativeUIShell()` — includes rail projection |
 
 ```scss
 @use '@rdlabo/ionic-theme-ios27/dist/css/vertical-bars.css';
@@ -39,39 +38,49 @@ The `/vertical-bars` entry point imports `@capacitor/core` at module load, so in
 
 ## Read the device layout
 
-`npx cap sync ios` registers the plugin automatically; no `configure` call is needed for device layout. An app that only wants the hinge posture — for example to drive a split pane — uses this API alone, with no projection runtime:
+Install the device-state plugin in the application, then sync the native project:
 
-```ts
-import { Capacitor } from '@capacitor/core';
-import { HingeStatus, IonicNativeUIShell } from '@rdlabo/ionic-theme-ios27/vertical-bars';
-
-// The plugin has no Web implementation; guard the subscription.
-if (Capacitor.getPlatform() === 'ios') {
-  await IonicNativeUIShell.startDeviceLayoutMonitoring();
-  const listener = await IonicNativeUIShell.addListener('deviceLayoutChange', ({ hingeStatus }) => {
-    // apply the posture
-  });
-  const { hingeStatus } = await IonicNativeUIShell.getDeviceLayout(); // initial value
-
-  // When the consumer goes away:
-  // await listener.remove();
-  // await IonicNativeUIShell.stopDeviceLayoutMonitoring();
-}
+```bash
+npm install @erkamyaman/capacitor-foldable
+npx cap sync
 ```
 
-`DeviceLayout` carries:
+Use Capacitor 8.5 or later and build with Xcode 27.1 or newer for iPhone Duo's iOS 27.1 APIs. The dependency is needed for device-driven layout, not for the theme's CSS, browser simulation, or native control projection alone. Do not import the plugin's `ionic-tabs.css` alongside this package's rail projection; both would reposition the same tabs.
 
-| Field                   | Meaning                                                                                                    |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `placement`             | `{ edge: 'leading' \| 'trailing' \| null, inset }` — the rail's logical edge in the reading direction and its UIKit safe-area inset in points; `edge` is `null` on devices without a rail |
-| `hingeStatus`           | `HingeStatus.Closed`, `PartiallyOpen`, or `FullyOpen`; `null` when the device reports no hinge             |
-| `webViewMetrics.radius` | the WebView's effective top-left corner radius in points                                                   |
+For a posture-driven split pane, subscribe directly without starting a projection runtime:
 
-`edge` is a **logical** direction: `'leading'` is where a reader starts a line — the physical left in LTR and the physical right in RTL. This is the same vocabulary as UIKit's `verticalBarEdge` trait and `@erkamyaman/capacitor-foldable`'s `getBarPlacement()`, so values from that plugin can be applied as-is without conversion.
+```ts
+import { Foldable, type FoldState } from '@erkamyaman/capacitor-foldable';
 
-Monitoring is reference-counted: each consumer pairs `startDeviceLayoutMonitoring()` with `stopDeviceLayoutMonitoring()`, and events stop when the last consumer releases it. `getDeviceLayout()` also works without monitoring for a one-shot read. While `enableVerticalControlArea()` or `enableNativeUIShell()` has native projection active it already holds a monitoring reference, so those users only add a listener and read the initial value — no extra start/stop pair.
+const applyFold = (fold: FoldState) => {
+  const pane = document.querySelector('ion-split-pane');
+  pane?.classList.toggle('ios-theme-split-pane-half-open', fold.state === 'half-opened');
+  const expanded = fold.state === 'half-opened' || (fold.state === 'flat' && !!fold.hingeBounds);
+  pane?.setAttribute('when', expanded ? '(min-width: 900px)' : '(min-width: 992px)');
+};
+let receivedEvent = false;
+let disposed = false;
+const listener = await Foldable.addListener('foldStateChange', (fold) => {
+  receivedEvent = true;
+  if (!disposed) applyFold(fold);
+});
+const initialFold = await Foldable.getFoldState();
+if (!disposed && !receivedEvent) applyFold(initialFold);
 
-**Build requirement:** iOS only enables the vertical bar for apps linked against the iOS 27.1 SDK or later — build with Xcode 27.1 or newer. Apps built with an older SDK run in backward-compatibility mode on iPhone Duo: the system reserves no rail, `placement.edge` stays `null`, `inset` stays `0`, and `hingeStatus` stays `null`. Everything else still works in that state — the opt-in classes reserve the DOM strip and the rail follows whatever placement the application applies — so the compat build remains usable and testable; only the real system rail, its measured inset and hinge posture require the newer toolchain.
+// When the consumer goes away:
+// disposed = true;
+// await listener.remove();
+```
+
+`getFoldState()` and `foldStateChange` report `state` (`'flat'`, `'half-opened'`, or `'closed'`), `posture`, and optional hinge geometry. Without fold information, the plugin returns a flat state without `hingeBounds`; restore the ordinary split-pane breakpoint in that case. The Web implementation also returns a flat state. A half-opened state uses the 900px breakpoint even without hinge geometry; a flat state with hinge geometry also uses 900px. A closed state restores the ordinary 992px breakpoint. Events received during initialization take precedence over the initial read.
+
+`getBarPlacement()` and `barPlacementChange` report `{ verticalBarEdge: 'leading' | 'trailing' | null, inset: number }`. The edge is **logical**: leading is the physical left in LTR and the physical right in RTL. Pass `{ edge: verticalBarEdge, nativeEdge: verticalBarEdge, inset }` to `setPlacement()`. No start/stop monitoring calls are needed; remove each listener when its owner is disposed.
+
+The theme never reads UIKit bar-placement traits. The application supplies `nativeEdge` on the initial read and each event, even when choosing a fixed `edge`. Omit `nativeEdge` to keep the last supplied value; pass `null` when the plugin reports no edge. An explicit `nativeEdge: null` or an initial unregistered edge prevents native vertical projection: `enableVerticalControlArea()` keeps the requested Web rail, while the full Native UI Shell temporarily restores its ordinary horizontal layout. The requested rail is retained so a later reported edge can restore vertical layout. Native vertical projection starts only after a matching non-null edge is supplied. Omitting `nativeEdge` after supplying it preserves that value, including `null`. Passing `{ edge: null, nativeEdge }` updates the reported edge while keeping the rail disabled.
+
+Foldable reports the measured width reserved by the native bar as `inset` and notifies changes through `barPlacementChange`. Pass this value to `setPlacement()` when following the reported edge, rather than assuming a fixed width. When no bar is reported, `inset` is `0`; the theme clears the explicit width and uses its CSS safe-area rules if the application still requests a Web rail. Applications choosing a different edge can supply their own width or use the CSS fallback. WebView corner radius remains a rendering concern: `configureNativeTransition()` uses the shell's `getWebViewMetrics()` API, independently of `Foldable`.
+
+**Migration:** the theme's former `DeviceLayout`, `HingeStatus`, `getDeviceLayout()`, `deviceLayoutChange`, and start/stop device-layout monitoring APIs have been removed. Replace device subscriptions with the `Foldable` APIs above; use `getWebViewMetrics()` for one-shot radius reads. Foldable can infer Duo bar placement from safe-area insets when the app is built without the iOS 27.1 SDK. Hinge data still requires the newer SDK. Apps can also request a fixed rail placement independently of the reported edge.
 
 ## Reserve the vertical rail
 
@@ -81,9 +90,9 @@ Add `.ios-theme-vertical-bars` to `ion-app` to reserve the rail region on the ph
 <ion-app class="ios-theme-vertical-bars">...</ion-app>
 ```
 
-The classes are physical — `-left` always means the physical left edge — because CSS and the native renderer work in physical coordinates. `setPlacement` (below) is the usual way to apply them: it accepts the logical `placement.edge` reported by the plugin and resolves it through the document's direction, so an RTL app does not need its own conversion.
+The classes are physical — `-left` always means the physical left edge — because CSS and the native renderer work in physical coordinates. `setPlacement` (below) is the usual way to apply them: it accepts the logical `verticalBarEdge` reported by `Foldable` and resolves it through the document's direction, so an RTL app does not need its own conversion.
 
-For Chrome development, no native plugin is needed — the class alone reserves `80px` to simulate iPhone Duo. When `setPlacement` receives a native placement, the measured UIKit inset replaces the simulated width, even when that inset is less than `80px`. Override `--ios-theme-vertical-bars-safe-area-left` or `--ios-theme-vertical-bars-safe-area-right` when simulating a different layout.
+For Chrome development, no native plugin is needed — the class alone reserves `80px` to simulate iPhone Duo. When `setPlacement` receives an explicit `{ edge, inset }`, that inset replaces the fallback width, even when it is less than `80px`. Override `--ios-theme-vertical-bars-safe-area-left` or `--ios-theme-vertical-bars-safe-area-right` when simulating a different layout.
 
 This keeps routers and component backgrounds full-viewport. `ion-content` moves its scroll foreground, `ion-toolbar` moves its container foreground, and `ion-fab` adjusts only when placed beside the system UI. The corresponding Ionic safe-area variable is reset inside those foreground components so descendants do not add the inset again.
 
@@ -97,16 +106,19 @@ Start the standalone runtime once at application startup:
 
 ```ts
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-import { enableVerticalControlArea, IonicNativeUIShell } from '@rdlabo/ionic-theme-ios27/vertical-bars';
+import { enableVerticalControlArea } from '@rdlabo/ionic-theme-ios27/vertical-bars';
+import { Foldable } from '@erkamyaman/capacitor-foldable';
 
 // Start on Chrome too; the Web projection stays idle until the class is present.
 const rail = await enableVerticalControlArea();
 let layoutListener: PluginListenerHandle | undefined;
 
 if (Capacitor.getPlatform() === 'ios') {
-  // The runtime already monitors device layout; only subscribe.
-  layoutListener = await IonicNativeUIShell.addListener('deviceLayoutChange', ({ placement }) => rail.setPlacement(placement));
-  rail.setPlacement((await IonicNativeUIShell.getDeviceLayout()).placement);
+  layoutListener = await Foldable.addListener('barPlacementChange', ({ verticalBarEdge, inset }) =>
+    rail.setPlacement({ edge: verticalBarEdge, nativeEdge: verticalBarEdge, inset }),
+  );
+  const { verticalBarEdge, inset } = await Foldable.getBarPlacement();
+  rail.setPlacement({ edge: verticalBarEdge, nativeEdge: verticalBarEdge, inset });
 }
 
 // Call when the application owner is disposed.
@@ -118,11 +130,11 @@ const stopVerticalArea = async () => {
 
 `setPlacement` on the handle and the exported `setVerticalControlAreaPlacement` are the same function; either applies the application's chosen placement to the CSS layout and both projections. It requires a mounted `ion-app` — call it after the app root exists.
 
-- Pass the `placement` object from `getDeviceLayout()`/`deviceLayoutChange`, or just a logical edge: `'leading'` or `'trailing'`. The logical edge resolves to a physical side through the nearest `dir` attribute, or through an explicit `rtl` second argument when the app already knows its direction.
+- Pass `{ edge, nativeEdge }`: `edge` is the application's chosen logical edge; `nativeEdge` is `verticalBarEdge` from `Foldable.getBarPlacement()`/`barPlacementChange`. They resolve through the nearest `dir` attribute, or the explicit `rtl` argument.
 - Pass `null` to restore the ordinary layout.
-- The device-layout listener reports what iOS chose; the application decides whether to apply it. An app that wants a fixed edge regardless of the report can simply pass its own `'leading'` or `'trailing'`.
+- The device-layout listener reports what iOS chose; the application decides whether to apply it. The theme compares the application's chosen edge with its supplied `nativeEdge`; a mismatch uses the Web rail until the edges match again. For a fixed right-in-LTR rail, pass `{ edge: 'trailing', nativeEdge: verticalBarEdge }` on each `Foldable` update.
 
-Start either `enableVerticalControlArea()` or the full `enableNativeUIShell()` — not both. Repeating the same configuration returns the shared runtime; starting a different configuration while it is active throws an error. The application should have one owner responsible for destroying that runtime. If the app already uses `enableNativeUIShell()`, keep that single runtime and call `setVerticalControlAreaPlacement(placement)` from its listener.
+Start either `enableVerticalControlArea()` or the full `enableNativeUIShell()` — not both. Repeating the same configuration returns the shared runtime; starting a different configuration while it is active throws an error. The application should have one owner responsible for destroying that runtime. If the app already uses `enableNativeUIShell()`, keep that single runtime and call `setVerticalControlAreaPlacement({ edge: verticalBarEdge, nativeEdge: verticalBarEdge, inset })` from its listener.
 
 On supported iOS versions the runtime hands eligible tabs, back navigation, menu buttons, and fixed-toolbar actions to a native SwiftUI `TabView` and toolbar; on Web, Android, or when native projection is unavailable, Web clones remain the fallback. Back navigation can come from outside a fixed toolbar; menu buttons and other toolbar actions still require one.
 
@@ -184,7 +196,7 @@ ion-split-pane {
 }
 ```
 
-The registered `--ios-theme-split-pane-width` defaults to `320px`; `.ios-theme-split-pane-half-open` sets it to `50vw`. Set `halfOpened` when `deviceLayoutChange` reports `HingeStatus.PartiallyOpen` (and read the initial value with `getDeviceLayout`). Ionic's `when` decides whether the menu is a persistent side pane; choose its breakpoint so the pane is hidden when closed — `null` means the device has no hinge, so restore the ordinary breakpoint for it. The application chooses where to apply this width rule; an ordinary split pane elsewhere is unchanged. This layout does not enable Vertical Bars or move an overlay menu.
+The registered `--ios-theme-split-pane-width` defaults to `320px`; `.ios-theme-split-pane-half-open` sets it to `50vw`. Set `halfOpened` when `foldStateChange` reports `state === 'half-opened'` (and read the initial value with `getFoldState()`). Ionic's `when` decides whether the menu is a persistent side pane; use the 900px breakpoint for a half-opened state or a flat state with hinge geometry, and the ordinary 992px breakpoint when closed or flat without geometry. Missing `hingeBounds` alone does not mean the device is flat. The application chooses where to apply this width rule; an ordinary split pane elsewhere is unchanged. This layout does not enable Vertical Bars or move an overlay menu.
 
 ## Vertical Control Area API
 
@@ -262,10 +274,11 @@ Stops synchronization, restores Web controls and releases native resources.
 
 #### VerticalBarPlacement
 
-| Prop        | Type                                                        | Description                                                |
-| ----------- | ----------------------------------------------------------- | ---------------------------------------------------------- |
-| **`edge`**  | <code><a href="#verticalbaredge">VerticalBarEdge</a></code> |                                                            |
-| **`inset`** | <code>number</code>                                         | UIKit safe-area inset on the vertical-bar edge, in points. |
+| Prop             | Type                                                        | Description                                                                                                                                                                                                                       |
+| ---------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`edge`**       | <code><a href="#verticalbaredge">VerticalBarEdge</a></code> |                                                                                                                                                                                                                                   |
+| **`inset`**      | <code>number</code>                                         | Explicit rail width in CSS pixels; omitted to use the stylesheet's safe-area rules.                                                                                                                                               |
+| **`nativeEdge`** | <code><a href="#verticalbaredge">VerticalBarEdge</a></code> | Native logical edge reported by the application's device plugin. Null or an unregistered edge uses a Web rail in verticalBarsOnly mode, or the ordinary Native UI Shell layout otherwise. Omission keeps the last supplied value. |
 
 
 #### NativeUIShellStatus

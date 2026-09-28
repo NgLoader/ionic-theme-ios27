@@ -44,14 +44,10 @@ export type VerticalBarEdge = 'leading' | 'trailing' | null;
 
 export interface VerticalBarPlacement {
   edge: VerticalBarEdge;
-  /** UIKit safe-area inset on the vertical-bar edge, in points. */
-  inset: number;
-}
-
-export enum HingeStatus {
-  Closed = 'closed',
-  PartiallyOpen = 'partiallyOpen',
-  FullyOpen = 'fullyOpen',
+  /** Explicit rail width in CSS pixels; omitted to use the stylesheet's safe-area rules. */
+  inset?: number;
+  /** Native logical edge reported by the application's device plugin. Null or an unregistered edge uses a Web rail in verticalBarsOnly mode, or the ordinary Native UI Shell layout otherwise. Omission keeps the last supplied value. */
+  nativeEdge?: VerticalBarEdge;
 }
 
 export interface VerticalControlAreaHandle extends NativeUIShellHandle {
@@ -163,21 +159,12 @@ export interface WebViewMetrics {
   radius: number;
 }
 
-export interface DeviceLayout {
-  placement: VerticalBarPlacement;
-  /** Fold hinge posture, or `null` when the device reports no hinge. */
-  hingeStatus: HingeStatus | null;
-  webViewMetrics: WebViewMetrics;
-}
-
 export interface NativeUIShellPlugin {
   configure(options?: { verticalBarsOnly?: boolean }): Promise<{ supported: boolean }>;
-  getDeviceLayout(): Promise<DeviceLayout>;
-  startDeviceLayoutMonitoring(): Promise<void>;
-  stopDeviceLayoutMonitoring(): Promise<void>;
+  getWebViewMetrics(): Promise<WebViewMetrics>;
   update(snapshot: ShellSnapshot): Promise<{ revision: number; rejectedSearches?: string[]; rejectedControls?: string[] }>;
   clear(options: { revision: number }): Promise<void>;
   addListener(name: 'activate', listener: (event: ShellActivation) => void): Promise<PluginListenerHandle>;
   addListener(name: 'search', listener: (event: ShellSearchEvent) => void): Promise<PluginListenerHandle>;
-  addListener(name: 'deviceLayoutChange', listener: (event: DeviceLayout) => void): Promise<PluginListenerHandle>;
+  addListener(name: 'webViewMetricsChange', listener: (event: WebViewMetrics) => void): Promise<PluginListenerHandle>;
 }
