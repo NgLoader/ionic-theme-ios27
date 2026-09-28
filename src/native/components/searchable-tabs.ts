@@ -167,7 +167,12 @@ export const createSearchSupport = (doc: Document, id: (element: Element) => str
     keyboard(visible: boolean) {
       keyboardVisible = visible;
       if (!visible) {
-        states.forEach((state) => (state.keyboardHidden = false));
+        for (const [binding, state] of states) {
+          // Ionic can wait for the pre-keyboard height indefinitely after rotation.
+          // Release the visibility override we own when native search's keyboard closes.
+          if (state.keyboardHidden) binding.tabBar.classList.remove('tab-bar-hidden');
+          state.keyboardHidden = false;
+        }
         releaseKeyboardResize();
       }
       schedule();
@@ -202,15 +207,7 @@ export const createSearchSupport = (doc: Document, id: (element: Element) => str
       };
       for (const binding of bindings) {
         const candidate = candidates.find((c) => c.element === binding.tabBar);
-        // The vertical rail has no search surface; hiding the FAB/footer there
-        // would leave searchable tabs without any search control.
-        if (
-          !candidate ||
-          candidate.control.search ||
-          candidate.control.placement === 'vertical-bars' ||
-          binding.tabBar.getAttribute('slot') !== 'bottom'
-        )
-          continue;
+        if (!candidate || candidate.control.search || binding.tabBar.getAttribute('slot') !== 'bottom') continue;
         const fab = binding.trigger.parentElement;
         // Search also supports the existing page-level fixed FAB, outside scrolling content.
         if (
@@ -441,8 +438,8 @@ export const createSearchSupport = (doc: Document, id: (element: Element) => str
     },
     retire(binding: NativeSearchBinding) {
       const state = states.get(binding);
+      // Keep ownership until keyboardWillHide can release this class.
       if (state?.keyboardHidden && keyboardVisible) binding.tabBar.classList.add('tab-bar-hidden');
-      if (state) state.keyboardHidden = false;
       if (state?.focused) {
         state.focused = false;
         state.input.dispatchEvent(new FocusEvent('blur'));
