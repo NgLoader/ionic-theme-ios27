@@ -1,5 +1,5 @@
 import { AnimationPosition } from './sheets-of-glass/interfaces';
-import { IonicConfig } from '@ionic/core';
+import { IonicConfig } from '@ionic/core/components';
 
 declare const __zone_symbol__requestAnimationFrame: ((callback: FrameRequestCallback) => number) | undefined;
 declare const requestAnimationFrame: ((callback: FrameRequestCallback) => number) | undefined;

@@ -1,4 +1,4 @@
-import { createAnimation } from '@ionic/core';
+import { createAnimation } from '@ionic/core/components';
 import {
   ANIMATION_DELAY_BASE,
   ANIMATION_DURATION,
