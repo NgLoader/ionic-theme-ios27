@@ -144,16 +144,24 @@ disabled controls, and grouped versus individual projection. Tabs are hidden on 
 page to leave room for the four buttons. Tap a projected button
 to check the last-action label.
 
-For the iOS theme, run the regular demo. For stock Ionic styling with only
-`vertical-bars.css`, run:
+Native appearance comparisons require an iOS build on a supported simulator or device.
+The browser uses Web clones: use it to check layout and actions, not `system` versus
+`source` appearance.
 
-```sh
-npm start -- --configuration=ionic-default
-```
+Choose the styling to build (run these commands from `demo`):
 
-This configuration automatically enables vertical-bars-only mode with
-`buttonDefaultFill: 'solid'`. Open `/main/index`, enable iPhone Duo Mode,
-and select **button-projection**. For a native build of the same styling, use
-`npm run build -- --configuration=production,ionic-default` before `npx cap sync ios`.
-The regular build also accepts `?verticalBarsOnly&buttonDefaultFill=solid` at startup
-for comparing the option with the iOS theme.
+| Styling | Browser preview | Build before `npx cap sync ios` | Source default fill |
+| --- | --- | --- | --- |
+| iOS theme | `npm start` | `npm run build -- --configuration=production` | `null` (glass) |
+| Stock Ionic, with only `vertical-bars.css` | `npm start -- --configuration=ionic-default` | `npm run build -- --configuration=production,ionic-default` | `solid` (set automatically) |
+
+Build, sync and run the iOS app. Both configurations default to `system` projection.
+To compare appearances:
+
+1. Open `/main/index?verticalBarsOnly`, enable iPhone Duo Mode, and select **button-projection**.
+2. Restart at `/main/index?verticalBarsOnly&buttonProjection=source` and open the same page.
+3. Compare fills, disabled controls and grouped buttons. Enabled actions update the last-action label; disabled actions must not.
+
+The startup query applies for the runtime's lifetime. Leave `buttonDefaultFill` out
+of the query to use the chosen configuration's default shown above. For local
+exceptions and fill rules, see [Choose button appearance](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/vertical-bars#choose-button-appearance).

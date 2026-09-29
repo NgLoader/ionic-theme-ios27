@@ -3089,7 +3089,7 @@ for (const { fill, native, grouped } of [
 ] as const) {
   test(`${fill} icon-only rail button preserves external form submit: native=${native}, grouped=${grouped}`, async ({ page }) => {
     await mockNative(page, !native);
-    await page.goto('/main/index/native-ui-shell');
+    await page.goto('/main/index/native-ui-shell?buttonProjection=source');
     await page.locator('ion-app').evaluate((app) => app.classList.add('ios-theme-vertical-bars'));
     await page.locator('app-native-ui-shell').evaluate(
       (root, { fill, grouped }) => {
@@ -3196,67 +3196,97 @@ for (const native of [true, false]) {
   });
 }
 
-test('button projection sends contextual fills and state updates to the native bridge', async ({ page }) => {
-  await mockNative(page);
-  await page.setViewportSize({ width: 466, height: 678 });
-  await page.goto('/main/index?verticalBarsOnly&buttonDefaultFill=solid');
-  await page.getByText('iPhone Duo Mode', { exact: true }).click();
-  await page.getByText('button-projection', { exact: true }).click();
-  const items = () =>
-    page.evaluate(
-      () =>
-        Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell')
-          .updates.at(-1)
-          ?.controls.flatMap((control) => control.items)
-          .filter((item) => ['Omitted', 'Clear', 'Solid', 'Outline'].includes(item.accessibilityLabel ?? '')) ?? [],
-    );
-  await expect.poll(async () => (await items()).length).toBe(4);
-  await expect.poll(async () => (await items()).map((item) => item.buttonFill)).toEqual(['clear', 'clear', 'solid', 'outline']);
-  await expect.poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor).toBeUndefined();
-  await page.getByRole('switch', { name: 'Custom CSS background', exact: true }).click();
-  await expect
-    .poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Solid')?.backgroundColor)
-    .toBe('rgb(184, 54, 42)');
-  expect((await items()).find((item) => item.accessibilityLabel === 'Clear')?.backgroundColor).toBeUndefined();
-  expect((await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor).toBeUndefined();
-  const clearId = (await items()).find((item) => item.accessibilityLabel === 'Clear')!.id;
-  for (const fill of ['solid', 'outline', 'clear'] as const) {
-    await page
-      .locator('app-button-projection ion-button:has(ion-icon[name="heart-outline"])')
-      .evaluate((button: HTMLIonButtonElement, value) => (button.fill = value), fill);
-    await expect
-      .poll(async () => {
-        const item = (await items()).find((item) => item.accessibilityLabel === 'Clear');
-        return { id: item?.id, fill: item?.buttonFill };
-      })
-      .toEqual({ id: clearId, fill });
-  }
-  await page.getByRole('switch', { name: 'Disabled', exact: true }).click();
-  await expect.poll(async () => (await items()).map((item) => item.disabled)).toEqual([true, true, true, true]);
-  for (const placement of ['Grouped', 'Standalone', 'Separate']) {
-    await page.locator('ion-select').click();
-    await page.getByRole('radio', { name: placement, exact: true }).click();
-    await expect
-      .poll(() =>
-        page.evaluate(() =>
+for (const projection of ['source', 'system'] as const) {
+  test(`button projection ${projection} sends appearance and state updates to the native bridge`, async ({ page }) => {
+    await mockNative(page);
+    await page.setViewportSize({ width: 466, height: 678 });
+    await page.goto(`/main/index?verticalBarsOnly&buttonDefaultFill=solid${projection === 'source' ? '&buttonProjection=source' : ''}`);
+    await page.getByText('iPhone Duo Mode', { exact: true }).click();
+    await page.getByText('button-projection', { exact: true }).click();
+    const items = () =>
+      page.evaluate(
+        () =>
           Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell')
             .updates.at(-1)
-            ?.controls.filter((control) =>
-              control.items.some((item) => ['Omitted', 'Clear', 'Solid', 'Outline'].includes(item.accessibilityLabel ?? '')),
-            )
-            .map((control) => control.items.length),
-        ),
-      )
-      .toEqual(placement === 'Grouped' ? [4] : [1, 1, 1, 1]);
-    await expect.poll(async () => (await items()).map((item) => item.disabled)).toEqual([true, true, true, true]);
+            ?.controls.flatMap((control) => control.items)
+            .filter((item) => ['Omitted', 'Clear', 'Solid', 'Outline'].includes(item.accessibilityLabel ?? '')) ?? [],
+      );
+    await expect.poll(async () => (await items()).length).toBe(4);
     await expect
       .poll(async () => (await items()).map((item) => item.buttonFill))
-      .toEqual([placement === 'Standalone' ? 'solid' : 'clear', 'clear', 'solid', 'outline']);
+      .toEqual(projection === 'source' ? ['clear', 'clear', 'solid', 'outline'] : [undefined, undefined, undefined, undefined]);
+    await expect.poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor).toBeUndefined();
+    await page.getByRole('switch', { name: 'Custom CSS background', exact: true }).click();
     await expect
-      .poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor)
-      .toBe(placement === 'Standalone' ? 'rgb(184, 54, 42)' : undefined);
-  }
-});
+      .poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Solid')?.backgroundColor)
+      .toBe(projection === 'source' ? 'rgb(184, 54, 42)' : undefined);
+    expect((await items()).find((item) => item.accessibilityLabel === 'Clear')?.backgroundColor).toBeUndefined();
+    expect((await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor).toBeUndefined();
+    const clearId = (await items()).find((item) => item.accessibilityLabel === 'Clear')!.id;
+    for (const fill of ['solid', 'outline', 'clear'] as const) {
+      await page
+        .locator('app-button-projection ion-button:has(ion-icon[name="heart-outline"])')
+        .evaluate((button: HTMLIonButtonElement, value) => (button.fill = value), fill);
+      await expect
+        .poll(async () => {
+          const item = (await items()).find((item) => item.accessibilityLabel === 'Clear');
+          return { id: item?.id, fill: item?.buttonFill };
+        })
+        .toEqual({ id: clearId, fill: projection === 'source' ? fill : undefined });
+    }
+    await page.getByRole('switch', { name: 'Disabled', exact: true }).click();
+    await expect.poll(async () => (await items()).map((item) => item.disabled)).toEqual([true, true, true, true]);
+    for (const placement of ['Grouped', 'Standalone', 'Separate']) {
+      await page.locator('ion-select').click();
+      await page.getByRole('radio', { name: placement, exact: true }).click();
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell')
+              .updates.at(-1)
+              ?.controls.filter((control) =>
+                control.items.some((item) => ['Omitted', 'Clear', 'Solid', 'Outline'].includes(item.accessibilityLabel ?? '')),
+              )
+              .map((control) => control.items.length),
+          ),
+        )
+        .toEqual(placement === 'Grouped' ? [4] : [1, 1, 1, 1]);
+      await expect.poll(async () => (await items()).map((item) => item.disabled)).toEqual([true, true, true, true]);
+      await expect
+        .poll(async () => (await items()).map((item) => item.buttonFill))
+        .toEqual(
+          projection === 'source'
+            ? [placement === 'Standalone' ? 'solid' : 'clear', 'clear', 'solid', 'outline']
+            : [undefined, undefined, undefined, undefined],
+        );
+      expect((await items()).every((item) => item.iconTemplate === (projection === 'system' ? true : undefined))).toBe(true);
+      await expect
+        .poll(async () => (await items()).find((item) => item.accessibilityLabel === 'Omitted')?.backgroundColor)
+        .toBe(projection === 'source' && placement === 'Standalone' ? 'rgb(184, 54, 42)' : undefined);
+    }
+    const solid = page.locator('app-button-projection ion-button:has(ion-icon[name="add-outline"])');
+    const group = solid.locator('..');
+    const opposite = projection === 'source' ? 'system' : 'source';
+    const solidItem = async () => (await items()).find((item) => item.accessibilityLabel === 'Solid');
+    const id = (await solidItem())!.id;
+    const expectProjection = async (mode: string) => {
+      await expect
+        .poll(async () => {
+          const item = await solidItem();
+          return { id: item?.id, fill: item?.buttonFill, template: item?.iconTemplate };
+        })
+        .toEqual({ id, fill: mode === 'source' ? 'solid' : undefined, template: mode === 'system' ? true : undefined });
+    };
+    await group.evaluate((element, mode) => element.classList.add(`ios-theme-projection-${mode}`), opposite);
+    await expectProjection(opposite);
+    await solid.evaluate((element, mode) => element.classList.add(`ios-theme-projection-${mode}`), projection);
+    await expectProjection(projection);
+    await solid.evaluate((element) => element.classList.remove('ios-theme-projection-source', 'ios-theme-projection-system'));
+    await expectProjection(opposite);
+    await group.evaluate((element) => element.classList.remove('ios-theme-projection-source', 'ios-theme-projection-system'));
+    await expectProjection(projection);
+  });
+}
 
 test('tab visibility ignores query parameters and fragments', async ({ page }) => {
   for (const path of ['/main/index/button-projection', '/main/settings', '/main/index/toolbar']) {
