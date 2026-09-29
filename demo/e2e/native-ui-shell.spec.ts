@@ -232,7 +232,7 @@ test('FAB restores excluded groups and follows icon, list and theme changes', as
   const fab = page.locator('ion-fab[horizontal=center]');
   const child = fab.locator('ion-fab-list ion-fab-button').first();
   await expect(fab).toHaveAttribute('data-native-ui-shell', '');
-  for (const name of ['ionic-theme-disabled', 'ios-theme-disabled', 'ios26-disabled', 'ios-theme-shell-disabled']) {
+  for (const name of ['ios-theme-disabled', 'ios26-disabled', 'ios-theme-shell-disabled']) {
     await child.evaluate((b, name) => b.classList.add(name), name);
     await expect(fab).not.toHaveAttribute('data-native-ui-shell');
     await child.evaluate((b, name) => b.classList.remove(name), name);
@@ -1093,13 +1093,13 @@ test('ancestor display, element opt-out aliases and non-glass fills restore Web'
   await expect(button).not.toHaveAttribute('data-native-ui-shell');
   await page.getByRole('button', { name: 'Parent hidden: true', exact: true }).click();
   await expect(button).toHaveAttribute('data-native-ui-shell', '');
-  for (const name of ['ios-theme-disabled', 'ios26-disabled', 'ionic-theme-disabled']) {
+  for (const name of ['ios-theme-disabled', 'ios26-disabled']) {
     await toolbar.evaluate((element, name) => element.classList.add(name), name);
     await expect(button).not.toHaveAttribute('data-native-ui-shell');
     await toolbar.evaluate((element, name) => element.classList.remove(name), name);
     await expect(button).toHaveAttribute('data-native-ui-shell', '');
   }
-  for (const name of ['ios-theme-disabled', 'ios26-disabled', 'ionic-theme-disabled']) {
+  for (const name of ['ios-theme-disabled', 'ios26-disabled']) {
     await button.evaluate((element, name) => element.classList.add(name), name);
     await expect(button).not.toHaveAttribute('data-native-ui-shell');
     await button.evaluate((element, name) => element.classList.remove(name), name);
@@ -1132,28 +1132,73 @@ test('shell opt-out restores the element and descendants while preserving Web gl
   await expect(button).toHaveAttribute('data-native-ui-shell', '');
   const original = await glass();
   expect(original.filter).toContain('blur');
-  for (const target of [
+  for (const [index, target] of [
     button,
     button.locator('..'),
     page.locator('app-native-ui-shell > ion-header'),
     page.locator('app-native-ui-shell'),
-  ]) {
-    await target.evaluate((element) => element.classList.add('ios-theme-shell-disabled'));
+  ].entries()) {
+    await target.evaluate(
+      (element, useAttribute) => {
+        if (useAttribute) element.setAttribute('data-shell', 'disabled');
+        else element.classList.add('ios-theme-shell-disabled');
+      },
+      index % 2 === 0,
+    );
     await expect(button).not.toHaveAttribute('data-native-ui-shell');
     await expect(target.locator('[data-native-ui-shell]')).toHaveCount(0);
     await expect(button.locator('button')).toHaveCSS('visibility', 'visible');
     expect(await glass()).toEqual(original);
     await expect(tabs).toHaveAttribute('data-native-ui-shell', '');
-    await target.evaluate((element) => element.classList.remove('ios-theme-shell-disabled'));
+    await target.evaluate((element) => {
+      element.removeAttribute('data-shell');
+      element.classList.remove('ios-theme-shell-disabled');
+    });
     await expect(button).toHaveAttribute('data-native-ui-shell', '');
   }
-  await page.locator('html').evaluate((element) => element.classList.add('ios-theme-shell-disabled'));
+  await page.locator('html').evaluate((element) => element.setAttribute('data-shell', 'disabled'));
   await expect(page.locator('[data-native-ui-shell]')).toHaveCount(0);
   await button.click();
   await expect(page.locator('[data-save-count]')).toHaveText('1');
-  await page.locator('html').evaluate((element) => element.classList.remove('ios-theme-shell-disabled'));
+  await page.locator('html').evaluate((element) => element.removeAttribute('data-shell'));
   await expect(tabs).toHaveAttribute('data-native-ui-shell', '');
 });
+
+for (const renderer of ['native', 'web'] as const) {
+  test(`initial shell opt-out can rejoin the ${renderer} rail without page re-entry`, async ({ page }) => {
+    await mockNative(page, renderer === 'web');
+    await page.goto('/main/index/native-ui-shell?verticalBarsOnly');
+    await page.locator('ion-app').evaluate((app) => app.classList.add('ios-theme-vertical-bars'));
+    for (const attribute of ['class', 'data-shell']) {
+      const value = attribute === 'class' ? 'ios-theme-shell-disabled' : 'disabled';
+      await page.locator('app-native-ui-shell ion-header').evaluate(
+        (header, { attribute, value }) => {
+          const toolbar = document.createElement('ion-toolbar');
+          toolbar.id = 'initial-shell-opt-out';
+          toolbar.setAttribute(attribute, value);
+          toolbar.innerHTML = `<ion-buttons><ion-button aria-label="First"><ion-icon slot="icon-only" name="add"></ion-icon></ion-button><ion-button aria-label="Second"><ion-icon slot="icon-only" name="heart"></ion-icon></ion-button></ion-buttons><ion-buttons class="ios-theme-disabled"><ion-button id="initial-individual" aria-label="Individual"><ion-icon slot="icon-only" name="add"></ion-icon></ion-button></ion-buttons>`;
+          header.append(toolbar);
+        },
+        { attribute, value },
+      );
+      const toolbar = page.locator('#initial-shell-opt-out');
+      const individual = toolbar.locator('#initial-individual');
+      const grouped = toolbar.locator(renderer === 'native' ? 'ion-buttons' : 'ion-buttons ion-button').first();
+      await expect(individual).toHaveClass(/hydrated/);
+      await expect(individual).toBeVisible();
+      await expect(toolbar.locator('[data-native-ui-shell]')).toHaveCount(0);
+      for (let i = 0; i < 2; i++) {
+        await toolbar.evaluate((element, attribute) => element.removeAttribute(attribute), attribute);
+        await expect(individual).toHaveAttribute('data-native-ui-shell', '');
+        await expect(grouped).toHaveAttribute('data-native-ui-shell', '');
+        await toolbar.evaluate((element, { attribute, value }) => element.setAttribute(attribute, value), { attribute, value });
+        await expect(toolbar.locator('[data-native-ui-shell]')).toHaveCount(0);
+        await expect(individual).toBeVisible();
+      }
+      await toolbar.evaluate((element) => element.remove());
+    }
+  });
+}
 
 test('shell opt-out in shared surface children keeps the whole surface on Web', async ({ page }) => {
   await mockNative(page);
@@ -1170,12 +1215,12 @@ test('shell opt-out in shared surface children keeps the whole surface on Web', 
     const surface = page.locator(surfaceSelector);
     const child = surface.locator(childSelector).first();
     await expect(surface).toHaveAttribute('data-native-ui-shell', '');
-    await child.evaluate((element) => element.classList.add('ios-theme-shell-disabled'));
+    await child.evaluate((element) => element.setAttribute('data-shell', 'disabled'));
     await expect(surface).not.toHaveAttribute('data-native-ui-shell');
     await expect(surface.locator('[data-native-ui-shell]')).toHaveCount(0);
     await expect(child).toHaveCSS('visibility', 'visible');
     await expect(button).toHaveAttribute('data-native-ui-shell', '');
-    await child.evaluate((element) => element.classList.remove('ios-theme-shell-disabled'));
+    await child.evaluate((element) => element.removeAttribute('data-shell'));
     await expect(surface).toHaveAttribute('data-native-ui-shell', '');
   }
 });
@@ -1508,10 +1553,10 @@ test('clear ion-buttons share one glass surface and keep independent actions', a
   });
 
   for (const target of [group, github]) {
-    await target.evaluate((element) => element.classList.add('ionic-theme-disabled'));
+    await target.evaluate((element) => element.classList.add('ios-theme-disabled'));
     await expect(group).not.toHaveAttribute('data-native-ui-shell');
     await expect(github.locator('button')).toHaveCSS('visibility', 'visible');
-    await target.evaluate((element) => element.classList.remove('ionic-theme-disabled'));
+    await target.evaluate((element) => element.classList.remove('ios-theme-disabled'));
     await expect(group).toHaveAttribute('data-native-ui-shell', '');
   }
   await group.evaluate((element) => {
@@ -1540,7 +1585,7 @@ test('theme-disabled ion-buttons project eligible buttons independently', async 
   await mockNative(page);
   await page.goto('/main/index/native-ui-shell');
   await page.locator('[data-glass-group]').evaluate((group) => {
-    group.classList.add('ionic-theme-disabled');
+    group.classList.add('ios-theme-disabled');
     group.querySelectorAll<HTMLIonButtonElement>('ion-button').forEach((button) => (button.fill = 'default'));
   });
   await expect
@@ -1987,9 +2032,9 @@ test('menu button projects slot icons and shared glass, restoring excluded surfa
   await expect(surface).toHaveAttribute('data-native-ui-shell', '');
   await surface.evaluate((element) => element.querySelector('ion-button')!.remove());
   for (const target of [surface, button]) {
-    await target.evaluate((element) => element.classList.add('ionic-theme-disabled'));
+    await target.evaluate((element) => element.classList.add('ios-theme-disabled'));
     await expect(surface).not.toHaveAttribute('data-native-ui-shell', '');
-    await target.evaluate((element) => element.classList.remove('ionic-theme-disabled'));
+    await target.evaluate((element) => element.classList.remove('ios-theme-disabled'));
     await expect(surface).toHaveAttribute('data-native-ui-shell', '');
   }
   await surface.evaluate((element: HTMLElement) => {
@@ -2258,7 +2303,7 @@ test('search retirement keeps the value, rejects late input and allows a fresh W
   await footer.locator('ion-searchbar').evaluate((bar: HTMLIonSearchbarElement) => {
     bar.value = 'retained';
   });
-  await footer.evaluate((element) => element.classList.add('ionic-theme-disabled'));
+  await footer.evaluate((element) => element.classList.add('ios-theme-disabled'));
   await expect(footer).not.toHaveAttribute('data-native-ui-shell');
   await page.evaluate(() => {
     const state = Capacitor.registerPlugin<ShellMock>('IonicNativeUIShell');
@@ -2281,7 +2326,7 @@ test('search retirement keeps the value, rejects late input and allows a fresh W
   await expect(footer).toHaveCSS('opacity', '1');
   await footer.locator('ion-button').click();
   await expect(footer).toHaveCSS('opacity', '0');
-  await footer.evaluate((element) => element.classList.remove('ionic-theme-disabled'));
+  await footer.evaluate((element) => element.classList.remove('ios-theme-disabled'));
   await expect(footer).toHaveAttribute('data-native-ui-shell', '');
   await expect
     .poll(() =>
@@ -3284,6 +3329,18 @@ for (const projection of ['source', 'system'] as const) {
     await solid.evaluate((element) => element.classList.remove('ios-theme-projection-source', 'ios-theme-projection-system'));
     await expectProjection(opposite);
     await group.evaluate((element) => element.classList.remove('ios-theme-projection-source', 'ios-theme-projection-system'));
+    await expectProjection(projection);
+    await group.evaluate((element, mode) => element.setAttribute('data-projection', mode), opposite);
+    await expectProjection(opposite);
+    await solid.evaluate((element, mode) => element.classList.add(`ios-theme-projection-${mode}`), projection);
+    await expectProjection(projection);
+    await solid.evaluate((element, mode) => element.setAttribute('data-projection', mode), opposite);
+    await expectProjection(opposite);
+    await solid.evaluate((element) => element.removeAttribute('data-projection'));
+    await expectProjection(projection);
+    await solid.evaluate((element) => element.classList.remove('ios-theme-projection-source', 'ios-theme-projection-system'));
+    await expectProjection(opposite);
+    await group.evaluate((element) => element.removeAttribute('data-projection'));
     await expectProjection(projection);
   });
 }
