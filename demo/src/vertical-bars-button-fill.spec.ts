@@ -12,7 +12,10 @@ const mount = (fills: (string | undefined)[], grouped = false) => {
   const buttons = Array.from(document.querySelectorAll('ion-button')) as HTMLIonButtonElement[];
   buttons.forEach((button, i) => {
     button.fill = fills[i] as HTMLIonButtonElement['fill'];
-    const native = button.attachShadow({ mode: 'open' }).appendChild(document.createElement('span'));
+    // Other suites may already have registered Ionic custom elements.
+    const shadow = button.shadowRoot ?? button.attachShadow({ mode: 'open' });
+    const native = document.createElement('span');
+    shadow.replaceChildren(native);
     native.setAttribute('part', 'native');
     native.style.cssText = 'color: white; background-color: rgba(0,0,0,0.24); border: 2px solid red';
   });
@@ -25,10 +28,11 @@ const mount = (fills: (string | undefined)[], grouped = false) => {
 };
 afterEach(() => document.body.replaceChildren());
 
-test('omitting the option preserves the existing glass projection', () => {
-  const item = readCandidate(mount([undefined]), () => 'button')!.control.items[0];
+test.each([undefined, null])('default %s preserves the existing glass projection', (buttonDefaultFill) => {
+  const item = readCandidate(mount([undefined]), () => 'button', { buttonDefaultFill })!.control.items[0];
   expect(item.color).toBe('rgb(255, 255, 255)');
   expect(item.backgroundColor).toBeUndefined();
+  expect(item.borderColor).toBeUndefined();
 });
 
 test.each([undefined, 'default'])('solid default retains computed colors for fill %s without changing the source', (fill) => {
@@ -50,12 +54,6 @@ test('grouped buttons use the default but explicit clear/outline override it', (
 test('explicit solid wins over a null default', () => {
   const item = readCandidate(mount(['solid']), () => 'button', { buttonDefaultFill: null })!.control.items[0];
   expect(item.backgroundColor).toBe('rgba(0, 0, 0, 0.24)');
-});
-
-test('null default keeps the glass projection', () => {
-  const item = readCandidate(mount([undefined]), () => 'button', { buttonDefaultFill: null })!.control.items[0];
-  expect(item.backgroundColor).toBeUndefined();
-  expect(item.borderColor).toBeUndefined();
 });
 
 test('startup rejects a different default until the previous owner is destroyed', async () => {
