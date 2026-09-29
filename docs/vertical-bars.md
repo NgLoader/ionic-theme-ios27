@@ -1,14 +1,14 @@
 ---
-title: Vertical Bars (experimental)
+title: Vertical Bars (preview)
 ---
 
-# Vertical Bars (experimental)
+# Vertical Bars (preview)
 
 Vertical Bars moves eligible Ionic navigation and actions into a side rail while keeping the original components as the source of labels, icons and behavior. It works with this theme or an existing Ionic theme, independently of hinge posture and the full Native UI Shell.
 
 Use this page for layout, control eligibility, native button appearance and the runtime API. For device events and split panes, see [iPhone Duo support](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/iphone-duo). For a step-by-step browser preview and native setup, start with [iPhone Duo with your existing theme](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/iphone-duo-with-original-theme).
 
-Vertical Bars is experimental; APIs and supported behavior may change. The button appearance options below are unreleased.
+Available in `1.2.0` as a **preview** feature. APIs and supported behavior may change.
 
 ## Enable Vertical Bars
 
@@ -87,7 +87,7 @@ The rule applies to individual buttons and buttons inside `ion-buttons`, on ordi
 
 ### Choose button appearance
 
-**Unreleased:** `buttonProjection` and the local projection settings below are part of the next release. They are not available in the `1.2.0-1` package used by the introductory guide. The following rules describe this branch.
+`buttonProjection` and the local projection settings below are available in `1.2.0`.
 
 For native vertical `ion-button` and `ion-menu-button` actions, choose who controls appearance:
 
@@ -102,7 +102,7 @@ const rail = await enableVerticalControlArea({ buttonProjection: 'source' });
 
 Both `enableVerticalControlArea()` and `enableNativeUIShell()` accept the option. Use one runtime, and destroy it before restarting with different options. Either mode preserves actions, disabled state and grouping. These appearance settings do not affect horizontal controls, source elements or Web fallback clones, so compare the native appearance on supported iOS.
 
-**Migration:** the default changes from source styling to `system`. Set `buttonProjection: 'source'` to retain the previous projection behavior. This does not change the feature's experimental status.
+**Migration from the experimental releases:** the default changes from source styling to `system`. Set `buttonProjection: 'source'` to retain the previous projection behavior.
 
 ### Override individual buttons or groups
 

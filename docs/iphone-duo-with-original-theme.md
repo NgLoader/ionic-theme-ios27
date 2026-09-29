@@ -1,14 +1,14 @@
 ---
-title: iPhone Duo with your existing theme (experimental)
+title: iPhone Duo with your existing theme (preview)
 ---
 
-# iPhone Duo with your existing theme (experimental)
+# iPhone Duo with your existing theme (preview)
 
 Add a vertical navigation area to your Ionic app while keeping its existing theme. Tabs and supported toolbar actions move to the side of the screen; your content and horizontal controls keep their current appearance. Both Ionic `ios` and `md` modes are supported.
 
 **Try it in Chrome first.** You can preview the layout with Web controls before setting up an iPhone Duo or an iOS build. On supported Capacitor iOS, the same Ionic markup supplies native SwiftUI controls in the system rail.
 
-Available in `1.2.0-0` as an **experimental** feature. APIs and supported behavior may change.
+Available in `1.2.0` as a **preview** feature. APIs and supported behavior may change.
 
 ## Try it in your existing Ionic app
 
@@ -17,7 +17,7 @@ Available in `1.2.0-0` as an **experimental** feature. APIs and supported behavi
 This guide assumes an existing Ionic app with Ionic `>=8.8.1 <10` and Capacitor Core `>=8 <9`. Keep your existing Capacitor 8 installation. If your app uses another Capacitor major, migrate its Core, CLI, and platform packages together before following this guide. For a Web-only app without Capacitor, also install `@capacitor/core@^8`; the JavaScript entry point needs it even in Chrome.
 
 ```bash
-npm install @rdlabo/ionic-theme-ios27@1.2.0-1
+npm install @rdlabo/ionic-theme-ios27@1.2.0
 ```
 
 Keep your existing theme imports. Add this to your global Sass file:
@@ -94,8 +94,6 @@ The adapter returns the original `Animation`, preserving its effects, duration, 
 
 The adapter keeps the builder's animation targets, including any horizontal back-button effect. If you need the iOS 27 transition with that effect excluded in vertical layouts, use `iosTransitionAnimation` from `@rdlabo/ionic-theme-ios27` as your `navAnimation` instead. It already includes the adapter, so no wrapper is needed.
 
-`withNativeUIShellTransition()` is available in `1.2.0-1` and later.
-
 ### 4. Start the controls after the app root is mounted
 
 Call this once from your application startup after `ion-app` exists in the DOM:
@@ -112,9 +110,9 @@ Use your existing Ionic click handlers, routing, and form associations. All butt
 
 When the application owner is disposed, call `await rail.destroy()` to restore the original controls and release the runtime. If you already use `enableNativeUIShell()`, keep that runtime and follow the [shared placement guide](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/iphone-duo#project-controls-into-the-rail).
 
-### Optional: choose native button appearance (unreleased)
+### Optional: choose native button appearance
 
-The next release adds `buttonProjection` and local projection settings. These options are not available in the `1.2.0-1` installation above. See [Choose button appearance](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/vertical-bars#choose-button-appearance) for availability and migration details.
+`buttonProjection` and local projection settings are available in `1.2.0`. See [Choose button appearance](https://docs.rdlabo.dev/projects/ionic-theme-ios27/docs/vertical-bars#choose-button-appearance) for availability and migration details.
 
 The new default is `system`: SwiftUI styles vertical buttons and tints their icons. If your existing theme should supply their fill and colors, use:
 
