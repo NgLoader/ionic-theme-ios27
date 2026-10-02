@@ -17,6 +17,7 @@ final class ShellVerticalBarsModel: ObservableObject {
         let label: String
         let accessibilityLabel: String
         let image: UIImage?
+        let clear: Bool
         let background: Color?
         let borderColor: Color?
         let borderWidth: CGFloat
@@ -47,6 +48,7 @@ final class ShellVerticalBarsModel: ObservableObject {
             Item(id: source.id, label: source.content.label,
                  accessibilityLabel: source.content.accessibilityLabel,
                  image: rendering.image(source.content),
+                 clear: source.content.buttonFill == .clear,
                  background: source.content.backgroundColor.map { Color(uiColor: rendering.color($0)) },
                  borderColor: source.content.borderColor.map { Color(uiColor: rendering.color($0)) },
                  borderWidth: source.content.borderWidth ?? 0,
@@ -126,6 +128,21 @@ private func verticalBarsButton(_ item: ShellVerticalBarsModel.Item, model: Shel
 }
 
 @available(iOS 26.0, *)
+private struct ShellVerticalBarsButton: ToolbarContent {
+    @ObservedObject var model: ShellVerticalBarsModel
+    let id: String
+    let placement: ToolbarItemPlacement
+
+    // Observe here so same-ID updates also refresh the shared toolbar background.
+    var body: some ToolbarContent {
+        if let item = model.groups.lazy.flatMap(\.items).first(where: { $0.id == id }) {
+            ToolbarItem(placement: placement) { verticalBarsButton(item, model: model) }
+                .sharedBackgroundVisibility(item.clear ? .hidden : .automatic)
+        }
+    }
+}
+
+@available(iOS 26.0, *)
 private func verticalBarsBackButton(_ item: ShellVerticalBarsModel.Item, model: ShellVerticalBarsModel) -> some View {
     Button { model.activate(item.id) } label: { Image(systemName: "chevron.backward") }
         .disabled(item.disabled)
@@ -178,6 +195,12 @@ private struct ShellVerticalBarsPage: View {
     var body: some View {
         NavigationStack {
             Color.clear.modifier(ShellVerticalBarsToolbarAdapter(model: model))
+                .toolbar {
+                    if model.search?.configuration.available == true {
+                        // Let the system adapt bottom-bar search to the vertical rail.
+                        DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    }
+                }
         }
     }
 }
@@ -238,20 +261,22 @@ private struct ShellVerticalBarsToolbar: ViewModifier {
                 .axisBehavior(.verticalPreferred)
             }
             ForEach(model.groups.filter { $0.slot == .start }) { group in
-                ToolbarItemGroup(placement: .topBarLeading) {
-                    ForEach(group.items) { item in
-                        verticalBarsButton(item, model: model)
-                    }
+                if group.id != model.groups.first(where: { $0.slot == .start })?.id {
+                    ToolbarSpacer(.fixed, placement: .topBarLeading)
                 }
-                .axisBehavior(.verticalPreferred)
+                ForEach(group.items) { item in
+                    ShellVerticalBarsButton(model: model, id: item.id, placement: .topBarLeading)
+                    .axisBehavior(.verticalPreferred)
+                }
             }
             ForEach(model.groups.filter { $0.slot != .start }) { group in
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ForEach(group.items) { item in
-                        verticalBarsButton(item, model: model)
-                    }
+                if group.id != model.groups.first(where: { $0.slot != .start })?.id {
+                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
-                .axisBehavior(.verticalPreferred)
+                ForEach(group.items) { item in
+                    ShellVerticalBarsButton(model: model, id: item.id, placement: .topBarTrailing)
+                    .axisBehavior(.verticalPreferred)
+                }
             }
         }
     }
@@ -270,10 +295,11 @@ private struct ShellVerticalBarsLegacyToolbar: ViewModifier {
                 }
             }
             ForEach(model.groups) { group in
-                ToolbarItemGroup(placement: .primaryAction) {
-                    ForEach(group.items) { item in
-                        verticalBarsButton(item, model: model)
-                    }
+                if group.id != model.groups.first?.id {
+                    ToolbarSpacer(.fixed, placement: .primaryAction)
+                }
+                ForEach(group.items) { item in
+                    ShellVerticalBarsButton(model: model, id: item.id, placement: .primaryAction)
                 }
             }
         }
@@ -327,6 +353,13 @@ final class ShellVerticalBarsController: ShellVerticalBarsControlling {
             let hit = super.hitTest(point, with: event)
             let inRail = railEdge == "left" ? point.x <= railWidth : point.x >= bounds.maxX - railWidth
             if inRail { return hit }
+            // Expanded system search leaves the rail; its field and close button
+            // must receive touches instead of passing them through to the WebView.
+            var ancestor = hit
+            while let view = ancestor, view !== self {
+                if view is UIControl { return hit }
+                ancestor = view.superview
+            }
             guard hit != nil, containsBarSurface(at: point) else { return nil }
             return hit
         }

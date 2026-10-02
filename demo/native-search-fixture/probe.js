@@ -38,8 +38,8 @@ for (const [label, action] of [
       watch.running = false;
     },
   ],
-  ['Toggle native theme', () => document.documentElement.classList.toggle('ionic-theme-disabled')],
-  ['Destroy native', () => window.nativeUIShell.destroy()],
+  ['Toggle native theme', () => document.documentElement.classList.toggle('ios-theme-disabled')],
+  ['Destroy native', () => document.querySelector('ion-app').nativeUIShell.destroy()],
   [
     'External value',
     () => {
@@ -68,7 +68,7 @@ for (const [label, action] of [
       trigger.style.transform = trigger.style.transform ? '' : 'translateY(-24px)';
     },
   ],
-  ['Toggle search theme', () => bar().classList.toggle('ionic-theme-disabled')],
+  ['Toggle search theme', () => bar().classList.toggle('ios-theme-disabled')],
 ]) {
   const button = document.createElement('button');
   button.textContent = label;

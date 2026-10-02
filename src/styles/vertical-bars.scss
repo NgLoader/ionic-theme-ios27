@@ -11,6 +11,7 @@
   initial-value: 320px;
 }
 
+ion-app.ios-theme-fold-half-opened ion-split-pane.split-pane-fold-layout,
 ion-split-pane.ios-theme-split-pane-half-open {
   --ios-theme-split-pane-width: 50vw;
 }
@@ -93,6 +94,17 @@ ion-app.ios-theme-vertical-bars
 
   // Collapse headers already sit inside the padded ion-content scroll area.
   &:not(:where(ion-header.header-collapse-condense *, ion-footer.footer-collapse-fade *)) {
+    // Ionic's centered iOS title is absolute and does not follow container padding.
+    // Center it within the same foreground width as the page content.
+    > ion-title.ios.title-default:not(.ios-theme-disabled, .ios26-disabled) {
+      inset-inline-start: var(--ios-theme-vertical-bars-safe-area-left-resolved);
+      width: calc(100% - var(--ios-theme-vertical-bars-safe-area-left-resolved) - var(--ios-theme-vertical-bars-safe-area-right-resolved));
+
+      &:dir(rtl) {
+        inset-inline-start: var(--ios-theme-vertical-bars-safe-area-right-resolved);
+      }
+    }
+
     &::part(container) {
       padding-inline-start: calc(var(--padding-start, 0px) + var(--ios-theme-vertical-bars-safe-area-left-resolved));
       padding-inline-end: calc(var(--padding-end, 0px) + var(--ios-theme-vertical-bars-safe-area-right-resolved));
@@ -282,7 +294,8 @@ html.ios-theme-native-ui-shell-prehide
     [icon],
     [color],
     .ios-theme-vertical-bars-back-web-owned,
-    .ionic-theme-disabled,
+    .ios-theme-shell-disabled,
+    [data-shell='disabled'],
     .ios-theme-disabled,
     .ios26-disabled,
     .ios-theme-vertical-bars-back-button-projection
@@ -295,7 +308,7 @@ html.ios-theme-native-ui-shell-prehide
       ion-footer[collapse] *,
       ion-buttons.ios-theme-horizontal-only *,
       .ios-theme-shell-disabled *,
-      .ionic-theme-disabled *,
+      [data-shell='disabled'] *,
       .ios-theme-disabled *,
       .ios26-disabled *
     )
@@ -414,4 +427,36 @@ ion-tab-button.ios.ion-cloned-element.ios27-vertical-tab-effect {
     min-height: 0;
     height: 100%;
   }
+}
+
+// Search shares the Web rail before Native UI Shell takes ownership.
+:is(ion-app.ios-theme-vertical-bars, ion-modal.ios-theme-vertical-bars-modal) > ion-fab.ios-theme-vertical-bars-search-projection {
+  position: fixed;
+  left: auto;
+  right: 25px;
+  top: auto;
+  bottom: 24px;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
+  margin: 0;
+  > ion-fab-button {
+    width: 46px;
+    height: 46px;
+    margin: 0;
+  }
+}
+
+ion-app.ios-theme-vertical-bars ion-fab > ion-fab-button[data-native-ui-shell] {
+  visibility: hidden !important;
+}
+
+.ios-theme-vertical-bars-search-projection[hidden] {
+  display: none !important;
+}
+
+ion-app.ios-theme-vertical-bars-left > ion-fab.ios-theme-vertical-bars-search-projection,
+ion-app.ios-theme-vertical-bars-left ion-modal.ios-theme-vertical-bars-modal > ion-fab.ios-theme-vertical-bars-search-projection {
+  left: 25px;
+  right: auto;
 }

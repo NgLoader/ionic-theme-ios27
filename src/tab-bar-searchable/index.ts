@@ -1,4 +1,5 @@
 import { createAnimation } from '@ionic/core/components';
+import { addSearchDismissButton } from './dismiss-button';
 import {
   ANIMATION_DELAY_BASE,
   ANIMATION_DURATION,
@@ -62,6 +63,9 @@ export const attachTabBarSearchable = (
     throw new Error('TabBarSearchable should be defined with props');
   }
   // Initialize
+  ionFooter.classList.add('ios-theme-searchable');
+  ionFabButton.closest('ion-fab')?.classList.add('ios-theme-searchable-trigger');
+  addSearchDismissButton(ionFooter);
   ionFooter.style.pointerEvents = 'none';
   ionFooter.style.opacity = '0';
   // Search dismissal belongs beside the Web search field, never in the vertical rail.
@@ -191,14 +195,16 @@ const leaveEvent = async (
     throw throwErrorByFailedClickElement('ion-buttons[slot=start] ion-button');
   }
 
+  const focused = ionFooter.ownerDocument.activeElement;
+  if (focused instanceof HTMLElement && ionFooter.contains(focused)) focused.blur();
   const references = getElementReferences(ionTabBar, ionFooter);
 
   const tabAnimations = verticalSearch
     ? []
     : [
-        createReverseTabBarAnimation(ionTabBar, references, searchableEventCache.elementSizes),
-        createReverseEffectAnimation(references, searchableEventCache.elementSizes, searchableEventCache.colorSelected),
-      ];
+      createReverseTabBarAnimation(ionTabBar, references, searchableEventCache.elementSizes),
+      createReverseEffectAnimation(references, searchableEventCache.elementSizes, searchableEventCache.colorSelected),
+    ];
   const searchContainerAnimation = createReverseSearchContainerAnimation(references, searchableEventCache.elementSizes);
   const closeButtonsAnimation = createReverseCloseButtonsAnimation(references);
   const fabButtonAnimation = createReverseFabButtonAnimation(ionFabButton, searchableEventCache.elementSizes);
