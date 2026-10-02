@@ -202,9 +202,9 @@ const leaveEvent = async (
   const tabAnimations = verticalSearch
     ? []
     : [
-      createReverseTabBarAnimation(ionTabBar, references, searchableEventCache.elementSizes),
-      createReverseEffectAnimation(references, searchableEventCache.elementSizes, searchableEventCache.colorSelected),
-    ];
+        createReverseTabBarAnimation(ionTabBar, references, searchableEventCache.elementSizes),
+        createReverseEffectAnimation(references, searchableEventCache.elementSizes, searchableEventCache.colorSelected),
+      ];
   const searchContainerAnimation = createReverseSearchContainerAnimation(references, searchableEventCache.elementSizes);
   const closeButtonsAnimation = createReverseCloseButtonsAnimation(references);
   const fabButtonAnimation = createReverseFabButtonAnimation(ionFabButton, searchableEventCache.elementSizes);
