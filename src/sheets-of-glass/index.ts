@@ -1,5 +1,5 @@
 import { AnimationPosition, EffectScales, registeredEffect } from './interfaces';
-import { createAnimation, createGesture } from '@ionic/core/components';
+import { createAnimation, createGesture } from '@ionic/core/components/index.js';
 import type { Animation, Gesture, GestureDetail } from '@ionic/core/components';
 import { changeSelectedElement, cloneElement, getStep } from '../utils';
 import { isNativeUIShell } from '../native-integration';
